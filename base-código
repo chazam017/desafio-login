@@ -1,0 +1,101 @@
+# configuração do projeto
+# dependências necessárias:
+# pip install django mysqlclient
+
+# criação do projeto
+# django-admin startproject meu_projeto
+# cd meu_projeto
+# python manage.py startapp contas
+
+# configuração do banco de dados MySQL no settings.py
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': 'meu_banco',  # Nome do banco de dados
+        'USER': 'usuario',  # Usuário do banco
+        'PASSWORD': 'senha',  # Senha do banco
+        'HOST': 'localhost',  # Servidor do banco
+        'PORT': '3306',  # Porta do MySQL
+    }
+}
+
+# modelos de Usuário (models.py)
+from django.contrib.auth.models import AbstractUser
+from django.db import models
+
+class Usuario(AbstractUser):
+    email = models.EmailField(unique=True)
+    username = None
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = []
+
+# forms para validação (forms.py)
+from django import forms
+from django.contrib.auth.forms import UserCreationForm
+from .models import Usuario # type: ignore
+import re
+
+class RegistroForm(UserCreationForm):
+    class Meta:
+        model = Usuario
+        fields = ['first_name', 'email', 'password1', 'password2']
+
+    def clean_first_name(self):
+        nome = self.cleaned_data.get('first_name')
+        if not nome.isalpha():
+            raise forms.ValidationError('O nome deve conter apenas letras.')
+        return nome
+
+    def clean_email(self):
+        email = self.cleaned_data.get('email')
+        if "@" not in email:
+            raise forms.ValidationError('Insira um e-mail válido.')
+        return email
+
+    def clean_password1(self):
+        senha = self.cleaned_data.get('password1')
+        if (len(senha) < 8 or not re.search("[A-Z]", senha) or
+                not re.search("[0-9]", senha) or not re.search("[@$!%*?&]", senha)):
+            raise forms.ValidationError("A senha deve ter pelo menos 8 caracteres, uma letra maiúscula, um número e um caractere especial.")
+        return senha
+
+# Views (views.py)
+from django.shortcuts import render, redirect
+from django.contrib.auth import authenticate, login
+from .forms import RegistroForm # type: ignore
+from django.contrib.auth.decorators import login_required
+from django.contrib import messages
+from django.core.mail import send_mail
+
+def registrar(request):
+    if request.method == 'POST':
+        form = RegistroForm(request.POST)
+        if form.is_valid():
+            usuario = form.save()
+            send_mail(
+                'Bem-vindo!',
+                'Você foi registrado com sucesso no desafio técnico da Fidelity!',
+                'noreply@meusite.com',
+                [usuario.email],
+                fail_silently=False,
+            )
+            return redirect('login')
+    else:
+        form = RegistroForm()
+    return render(request, 'registrar.html', {'form': form})
+
+def login_view(request):
+    if request.method == 'POST':
+        email = request.POST['email']
+        senha = request.POST['senha']
+        usuario = authenticate(request, email=email, password=senha)
+        if usuario:
+            login(request, usuario)
+            return redirect('menu')
+        else:
+            messages.error(request, 'Credenciais inválidas.')
+    return render(request, 'login.html')
+
+@login_required
+def menu(request):
+    return render(request, 'menu.html')
